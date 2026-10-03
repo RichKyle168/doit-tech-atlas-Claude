@@ -1,0 +1,38 @@
+{
+  "name": "doit-tech-atlas",
+  "version": "0.3.0",
+  "private": true,
+  "description": "DOIT Tech Atlas 產業技術星圖 — 3D technology atlas with an API and PostgreSQL",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "node server/index.js --dev",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "build:artifact": "vite build --mode artifact && node scripts/make-artifact.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/validate-graph.mjs && node scripts/check-numbers.mjs",
+    "verify": "node scripts/verify-sources.mjs",
+    "db:migrate": "node server/cli.js migrate",
+    "db:seed": "node server/cli.js seed",
+    "db:export": "node server/cli.js export",
+    "db:import": "node server/cli.js import"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "compression": "^1.8.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "framer-motion": "^11.11.17",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}

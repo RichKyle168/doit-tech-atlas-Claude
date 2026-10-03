@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-artifact
+.data
+.env
+*.log
+.DS_Store

@@ -1,0 +1,35 @@
+# Render Blueprint — one web service (API + 3D client) and one PostgreSQL database.
+# One-click deploy: https://render.com/deploy?repo=https://github.com/RichKyle168/doit-tech-atlas-Claude
+#
+# Free plan notes
+#   · the web service sleeps after 15 minutes without visitors; the next visit wakes it in about a minute
+#   · a free Render PostgreSQL database expires 30 days after it is created. If it does, the site keeps
+#     working on its built-in read-only copy; point DATABASE_URL at a new database to make it editable again.
+
+services:
+  - type: web
+    name: doit-tech-atlas
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: doit-tech-atlas-db
+          property: connectionString
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+databases:
+  - name: doit-tech-atlas-db
+    plan: free
+    region: singapore
+    databaseName: atlas
+    user: atlas
+    postgresMajorVersion: "16"
+    ipAllowList: [] # only the web service (Render's private network) can connect
