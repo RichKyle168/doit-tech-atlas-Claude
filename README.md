@@ -5,7 +5,7 @@
 一張可以「摘星」的 3D 產業技術星圖：**宇宙 → 銀河 → 星系 → 星星**，每一層都是一個繞著中心公轉的系統，Dr. T 一路引導。
 星圖資料存放在 PostgreSQL，由 API 提供給前端；內容以《2025/2026產業技術白皮書》為基礎整理。
 
-線上版本：**https://doit-tech-atlas.onrender.com**
+線上版本：**https://doit-tech-atlas-claude.vercel.app**（Vercel ＋ Neon，新加坡）
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/RichKyle168/doit-tech-atlas-Claude)
 
