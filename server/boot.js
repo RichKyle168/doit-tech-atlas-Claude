@@ -31,7 +31,8 @@ export const SECURITY_HEADERS = {
   'X-Frame-Options': 'SAMEORIGIN',
 };
 
-export const databaseUrlFromEnv = () => process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+// DATABASE_URL is ours; POSTGRES_URL and STORAGE_URL are the names Vercel's Neon integration may use
+export const databaseUrlFromEnv = () => process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.STORAGE_URL || '';
 
 export async function prepare({ databaseUrl = databaseUrlFromEnv(), embeddedDir, seed = true, poolMax, log = console } = {}) {
   const content = contentPayload();
