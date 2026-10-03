@@ -5,7 +5,7 @@
   "description": "DOIT Tech Atlas 產業技術星圖 — 3D technology atlas with an API and PostgreSQL",
   "type": "module",
   "engines": {
-    "node": ">=20.11"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "node server/index.js --dev",

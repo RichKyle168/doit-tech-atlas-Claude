@@ -16,6 +16,9 @@ export async function syncContent(db, content, { force = false, overwriteAdmin =
 
   const opts = { seed: true, overwriteAdmin };
   const stats = await db.tx(async (t) => {
+    // one sync at a time; whoever waited finds the work already done
+    await t.query('SELECT pg_advisory_xact_lock($1)', [7272_0002]);
+    if (!force && (await getMeta(t, 'content_hash')) === hash) return null;
     const written = { sources: 0, nodes: 0, edges: 0 };
     await upsertDocument(t, content.document);
     for (const s of content.sources) written.sources += await upsertSource(t, s, { ...opts, documentId: content.document.id });
@@ -42,6 +45,7 @@ export async function syncContent(db, content, { force = false, overwriteAdmin =
     await setMeta(t, 'synced_at', new Date().toISOString());
     return { written, removed };
   });
+  if (!stats) return { changed: false, hash };
   log.info(`[db] content synced (${hash}): wrote ${stats.written.nodes} nodes, ${stats.written.edges} edges, ${stats.written.sources} sources; removed ${stats.removed.nodes}/${stats.removed.edges}/${stats.removed.sources}`);
   return { changed: true, hash, ...stats };
 }

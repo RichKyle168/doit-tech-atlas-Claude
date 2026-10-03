@@ -23,6 +23,17 @@ npm run dev        # http://localhost:5173 ：前端（熱更新）＋ API ＋ �
 DATABASE_URL=postgres://user:pass@localhost:5432/atlas npm run dev
 ```
 
+## 部署到 Vercel（建議）
+
+網頁由 Vercel 的 CDN 提供，`/api/*` 交給 `api/index.js`（Vercel Function，設在新加坡 `sin1`），資料庫用 Neon（新加坡）。設定都在 `vercel.json`。
+
+1. Vercel → Add New → Project → 匯入這個 repo（Framework 會自動辨識為 Vite）。
+2. 專案的 Storage → Create Database → **Neon**，區域選 **Singapore**，連到這個專案：會自動加上 `DATABASE_URL`。
+3. Settings → Environment Variables：加上 `ADMIN_TOKEN`（自訂一串長密碼）；要自然人聲再加 `AZURE_SPEECH_KEY`、`AZURE_SPEECH_REGION`。
+4. 重新部署。第一個請求會自動建表並寫入星圖內容。
+
+Vercel 免費方案（Hobby）限個人、非商業用途；正式對外的商業服務請用 Pro。
+
 ## 部署到 Render
 
 點上方的 **Deploy to Render** 按鈕，Render 會讀取 `render.yaml`，建立：
@@ -78,12 +89,16 @@ content/              內建內容（資料庫的種子資料）
 │  edges.js           技術之間的關係（支撐／協同／延伸）
 │  sources.js         原文摘錄
 shared/graph.js       節點規則與完整性驗證（前端、API、腳本共用）
+api/index.js          Vercel Function 入口
+vercel.json           Vercel：CDN、新加坡區、/api 轉送、安全標頭
 server/
-│  index.js           啟動：資料庫 → 建表 → 同步內容 → API ＋ 前端
+│  boot.js            共用的啟動流程：資料庫 → 建表 → 同步內容 → API
+│  serverless.js      Vercel 用：第一個請求時啟動一次，之後重複使用
+│  index.js           長駐伺服器（本機、Render）：API ＋ 前端
 │  app.js             API 路由
 │  cli.js             資料庫指令（migrate / seed / export / import）
 │  db/client.js       PostgreSQL 或內建 PGlite，連不上時自動退回唯讀副本
-│  db/migrations/     資料表定義
+│  db/migrations.js   資料表定義（依序套用一次）
 │  db/repo.js         所有 SQL
 │  db/sync.js         內容同步（不覆蓋編輯過的資料）
 src/                  3D 前端

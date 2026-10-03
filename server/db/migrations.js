@@ -1,3 +1,12 @@
+/**
+ * Database migrations, applied in order, once each (see migrate.js).
+ * Kept as JavaScript so they travel with the code into serverless bundles.
+ * Never edit a migration that has shipped; add a new one.
+ */
+export const MIGRATIONS = [
+  {
+    version: '001_init.sql',
+    sql: `
 -- DOIT Tech Atlas · initial schema
 -- origin = 'seed'  : row comes from the bundled content and is kept in sync with it on every boot
 --          'admin' : row was created or edited through the admin API; seed sync never overwrites it
@@ -60,3 +69,20 @@ CREATE TABLE meta (
   value       JSONB,
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+`,
+  },
+  {
+    version: '002_tts_cache.sql',
+    sql: `
+-- Read-aloud audio, synthesised once per text and voice, then served from here.
+CREATE TABLE tts_cache (
+  key         TEXT PRIMARY KEY,
+  voice       TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  mime        TEXT NOT NULL DEFAULT 'audio/mpeg',
+  audio       BYTEA NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`,
+  },
+];

@@ -17,31 +17,15 @@ import compression from 'compression';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contentPayload } from '../content/index.js';
-import { openDatabase } from './db/client.js';
-import { migrate } from './db/migrate.js';
-import { syncContent } from './db/sync.js';
-import { createApi } from './app.js';
+import { apiApp, databaseUrlFromEnv, prepare } from './boot.js';
 import { createTts } from './tts.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob:",
-  "connect-src 'self'",
-  "frame-ancestors 'self'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ');
-
 export async function start({
   dev = false,
   port = Number(process.env.PORT) || (dev ? 5173 : 10000),
-  databaseUrl = process.env.DATABASE_URL,
+  databaseUrl = databaseUrlFromEnv(),
   embeddedDir = process.env.PGLITE_DIR ?? (dev ? join(ROOT, '.data/pglite') : undefined),
   adminToken = process.env.ADMIN_TOKEN || '',
   seed = process.env.SEED_ON_BOOT !== 'false',
@@ -49,29 +33,12 @@ export async function start({
   tts = createTts(),
   log = console,
 } = {}) {
-  const content = contentPayload();
-  const { db, fallback } = await openDatabase({ url: databaseUrl, embeddedDir, log });
-  await migrate(db, { log });
-  // the fallback copy is always seeded, otherwise it would be empty
-  if (seed || fallback) {
-    try {
-      await syncContent(db, content, { log });
-    } catch (err) {
-      log.error('[db] content sync failed; serving what the database already has:', err.message);
-    }
-  }
+  const { db, fallback, content } = await prepare({ databaseUrl, embeddedDir, seed, log });
 
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 1);
   app.use(compression());
-  app.use((req, res, next) => {
-    res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' });
-    if (!dev) res.set('Content-Security-Policy', CSP);
-    next();
-  });
-
-  app.use('/api', createApi({ db, engine: fallback ? 'embedded-fallback' : db.engine, readOnly: fallback, adminToken, content, tts, log }));
+  app.use(apiApp({ db, fallback, content, adminToken, tts, csp: !dev, log }));
 
   if (serveClient && dev) {
     const { createServer } = await import('vite');

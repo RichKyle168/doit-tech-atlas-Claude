@@ -37,6 +37,33 @@ class HttpError extends Error {
 }
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+/**
+ * JSON request bodies for the editor API. Works both on a plain Node server (read the stream)
+ * and on Vercel, whose Node helpers may already have parsed the body into req.body.
+ * The result goes to req.json, so nothing ever assigns to a platform-owned req.body.
+ */
+async function readJson(req, limit = 512 * 1024) {
+  if (Object.getOwnPropertyDescriptor(req, 'body')) {
+    const v = req.body;
+    if (v === undefined || v === null || v === '') return {};
+    if (typeof v === 'string' || Buffer.isBuffer(v)) return JSON.parse(v.toString());
+    return v;
+  }
+  if (req.readableEnded) return {};
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new HttpError(413, 'The request body is too large.');
+    chunks.push(chunk);
+  }
+  const text = Buffer.concat(chunks).toString('utf8').trim();
+  return text ? JSON.parse(text) : {};
+}
+const jsonBody = (req, res, next) => readJson(req)
+  .then((body) => { req.json = body; next(); })
+  .catch((err) => next(err instanceof HttpError ? err : new HttpError(400, 'The request body must be JSON.')));
 const sha = (s) => createHash('sha256').update(s).digest();
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const pick = (n) => n && { id: n.id, level: n.level, nameZh: n.nameZh, nameEn: n.nameEn, status: n.status };
@@ -189,7 +216,7 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
   }));
 
   admin.put('/nodes/:id', wrap(async (req, res) => {
-    const node = { ...req.body, id: req.params.id };
+    const node = { ...req.json, id: req.params.id };
     if (!ID.test(node.id)) throw new HttpError(400, 'Node ids use lowercase letters, digits and dashes.');
     const { all } = await atlas();
     const exists = all.nodes.some((n) => n.id === node.id);
@@ -214,7 +241,8 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
   }));
 
   admin.put('/edges', wrap(async (req, res) => {
-    const e = { from: req.body.from, to: req.body.to, relation: req.body.relation, sourceType: req.body.sourceType, label: req.body.label ?? null, refs: req.body.refs || [] };
+    const b = req.json;
+    const e = { from: b.from, to: b.to, relation: b.relation, sourceType: b.sourceType, label: b.label ?? null, refs: b.refs || [] };
     const { all } = await atlas();
     const same = (x) => x.from === e.from && x.to === e.to && x.relation === e.relation;
     const exists = all.edges.some(same);
@@ -225,7 +253,7 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
   }));
 
   admin.delete('/edges', wrap(async (req, res) => {
-    const { from, to, relation } = { ...req.query, ...(req.body || {}) };
+    const { from, to, relation } = { ...req.query, ...(req.json || {}) };
     const n = await db.tx((t) => repo.deleteEdge(t, { from, to, relation }));
     if (!n) throw new HttpError(404, 'No such relation.');
     invalidate();
@@ -233,7 +261,7 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
   }));
 
   admin.put('/sources/:id', wrap(async (req, res) => {
-    const s = { ...req.body, id: req.params.id };
+    const s = { ...req.json, id: req.params.id };
     if (!ID.test(s.id)) throw new HttpError(400, 'Source ids use lowercase letters, digits and dashes.');
     if (!s.label || !s.excerpt || !['quote', 'table', 'figure'].includes(s.kind) || s.page === undefined) {
       throw new HttpError(400, 'A source needs page, label, kind (quote | table | figure) and excerpt.');
@@ -245,12 +273,12 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
   }));
 
   admin.post('/sync', wrap(async (req, res) => {
-    const result = await syncContent(db, content, { force: true, overwriteAdmin: Boolean(req.body?.overwriteAdmin), log });
+    const result = await syncContent(db, content, { force: true, overwriteAdmin: Boolean(req.json?.overwriteAdmin), log });
     invalidate();
     res.json({ ok: true, ...result });
   }));
 
-  api.use('/admin', express.json({ limit: '512kb' }), admin);
+  api.use('/admin', jsonBody, admin);
 
   api.use((req, res, next) => next(new HttpError(404, `No API route ${req.method} ${req.originalUrl}`)));
   // eslint-disable-next-line no-unused-vars

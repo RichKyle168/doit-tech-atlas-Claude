@@ -60,12 +60,12 @@ async function embedded(dataDir) {
  * @returns {{ db, fallback: boolean, reason?: string }}
  *   fallback = true when DATABASE_URL was set but PostgreSQL could not be reached.
  */
-export async function openDatabase({ url = process.env.DATABASE_URL, embeddedDir, log = console } = {}) {
+export async function openDatabase({ url = process.env.DATABASE_URL, embeddedDir, poolMax, log = console } = {}) {
   if (url) {
     const pool = new pg.Pool({
       connectionString: url,
       ssl: process.env.DATABASE_SSL === 'no-verify' ? { rejectUnauthorized: false } : undefined,
-      max: Number(process.env.DATABASE_POOL_MAX || 5),
+      max: Number(poolMax || process.env.DATABASE_POOL_MAX || 5),
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
     });
