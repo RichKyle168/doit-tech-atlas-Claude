@@ -41,6 +41,15 @@ DATABASE_URL=postgres://user:pass@localhost:5432/atlas npm run dev
 * 免費的 Render PostgreSQL **建立 30 天後到期**。到期後網站不會壞：伺服器偵測到資料庫連不上，會自動改用內建的唯讀副本繼續提供星圖（`/api/health` 會顯示 `readOnly: true`）。要恢復可編輯，只要把 `DATABASE_URL` 換成新的資料庫（Render 付費方案，或任何 PostgreSQL 服務），重新部署即可；資料會自動重建。
 * 到期前可以先用 `GET /api/admin/export` 備份編輯過的內容。
 
+## 語音朗讀與大字
+
+* 技術星星的說明面板，每個欄位都有「朗讀」按鈕，最上方另有「朗讀全文」。正在朗讀的段落會在左側亮起，換頁或關閉面板就停止。
+* **自然人聲（建議）**：在 Render 的 Environment 加上 `AZURE_SPEECH_KEY` 與 `AZURE_SPEECH_REGION`，伺服器會用 Azure 神經語音 `zh-TW-YunJheNeural`（溫暖的臺灣男聲），語速放慢 8%、音調略低。每段文字只合成一次，之後從資料庫的 `tts_cache` 直接播放。Azure Speech 免費方案（F0）每月 50 萬字元，整個星圖目前不到 1 萬字元。
+  * 可調整：`TTS_VOICE`（例如 `zh-TW-HsiaoChenNeural` 女聲）、`TTS_RATE`（預設 `-8%`）、`TTS_PITCH`（預設 `-2%`）。
+* **沒有設定時**：改用訪客裝置內建的國語語音，優先選擇臺灣國語、自然／神經語音、較低沉的聲音，語速 0.88 倍。音色取決於裝置（iPhone、Android、Windows 各不相同）。
+* 文字會先整理成適合朗讀的形式：≥ 讀作「大於等於」、2024~2027 讀作「2024到2027」、ms 讀作「毫秒」等。
+* 字級：內文 17px 以上、按鈕至少 40–44px 高，次要文字提高對比，Dr. T 與清單改用黑體以便閱讀。
+
 ## 架構
 
 ```
@@ -110,6 +119,8 @@ test/api.test.mjs     API 與資料庫測試
 | `GET /api/nodes/:id` | 單一節點：路徑、子節點、關係、引用來源 |
 | `GET /api/sources?ids=a,b` | 原文摘錄 |
 | `GET /api/search?q=數位` | 搜尋名稱、標籤與說明 |
+| `GET /api/tts` | 是否已設定自然人聲 |
+| `GET /api/tts/:id/:part` | 朗讀音檔（mp3），例如 `/api/tts/digital-twin/summary` |
 
 編輯（需要 `Authorization: Bearer $ADMIN_TOKEN`）：
 

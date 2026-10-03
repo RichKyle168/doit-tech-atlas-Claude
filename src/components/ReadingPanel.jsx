@@ -3,20 +3,16 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { NODES, constellationsOf, getNode, linksOf, refsOf, starsOf } from '../data/graph.js';
 import { originFrom, useAtlas } from '../state/atlas.jsx';
 import { SourceListButton, Text } from './Source.jsx';
+import { STAR_PARTS } from '../../shared/speech.js';
+import { SpeakButton, fieldSegments, pageSegments, readingPart, useSpeech } from './Speech.jsx';
 
-const FIELDS = [
-  ['description', '這是什麼'],
-  ['howItWorks', '它如何運作'],
-  ['whyItMatters', '為什麼重要'],
-  ['applications', '應用在哪裡'],
-  ['industryValue', '產業價值'],
-  ['taiwan', '臺灣布局'],
-];
+// the star page's fields, in reading order (the summary is shown as the lead)
+const FIELDS = STAR_PARTS.filter(([, label]) => label);
 
-function Section({ label, children }) {
+function Section({ label, children, action = null, reading = false }) {
   return (
-    <section className="rp-sec">
-      <h4>{label}</h4>
+    <section className={`rp-sec${reading ? ' is-reading' : ''}`}>
+      {action ? <div className="rp-head"><h4>{label}</h4>{action}</div> : <h4>{label}</h4>}
       {children}
     </section>
   );
@@ -72,17 +68,23 @@ function Pending({ node, fields }) {
 }
 
 function StarBody({ n }) {
+  const { playing } = useSpeech();
+  const reading = readingPart(playing, n.id);
   const links = linksOf(n.id);
   const peers = links.filter((l) => getNode(l.other).level === 'L4').map((l) => l.other);
   const systems = links.filter((l) => getNode(l.other).level === 'L3').map((l) => l.other);
+  const speakField = (key, label) => <SpeakButton id={`${key}:${n.id}`} segments={fieldSegments(n, key)} title={label} />;
   return (
     <>
-      <Text value={n.summary} className="rp-lead" />
+      <div className={`rp-lead-wrap${reading === 'summary' ? ' is-reading' : ''}`}>
+        <div className="rp-head rp-head--lead"><h4>簡介</h4>{speakField('summary', '簡介')}</div>
+        <Text value={n.summary} className="rp-lead" />
+      </div>
       {FIELDS.map(([key, label]) => {
         const v = n[key];
         if (!v || (Array.isArray(v) && !v.length)) return null;
         return (
-          <Section key={key} label={label}>
+          <Section key={key} label={label} action={speakField(key, label)} reading={reading === key}>
             {Array.isArray(v) ? (
               <ul className="rp-list">{v.map((a) => <li key={a.t}>{a.t}</li>)}</ul>
             ) : <Text value={v} />}
@@ -174,8 +176,10 @@ const KICKER = {
 
 export default function ReadingPanel() {
   const { panelNode: n, actions } = useAtlas();
+  const { stop, playing } = useSpeech();
   const scroller = useRef(null);
   useEffect(() => { scroller.current?.scrollTo({ top: 0 }); }, [n?.id]);
+  useEffect(() => () => stop(), [n?.id, stop]); // a reading ends when the page it belongs to closes
 
   return (
     <AnimatePresence>
@@ -196,8 +200,13 @@ export default function ReadingPanel() {
               <button type="button" className="icon-btn" onClick={actions.closePanel} aria-label="關閉說明">✕</button>
             </header>
             <motion.div key={n.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-              <h3 className="panel__name">{n.nameZh}</h3>
+              <h3 className={`panel__name${n.level === 'L4' && readingPart(playing, n.id) === 'name' ? ' is-reading' : ''}`}>{n.nameZh}</h3>
               <p className="panel__en">{n.nameEn}</p>
+              {n.level === 'L4' && (
+                <div className="rp-tools">
+                  <SpeakButton id={`all:${n.id}`} segments={pageSegments(n)} label="朗讀全文" title={n.nameZh} wide />
+                </div>
+              )}
               {n.level === 'L4' && <StarBody n={n} />}
               {n.level === 'L3' && <SystemBody n={n} />}
               {n.level === 'L1' && <UniverseBody n={n} />}

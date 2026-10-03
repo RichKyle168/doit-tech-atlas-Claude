@@ -10,11 +10,13 @@ export let EDGES = [];
 export let UNIVERSES = [];
 export let CONSTELLATIONS = [];
 export let DOCUMENT = null;
+export let VERSION = '';
 let byId = new Map();
 let neighbours = new Map();
 
-export function setGraph({ document, nodes, edges }) {
+export function setGraph({ document, nodes, edges, version = '' }) {
   DOCUMENT = document;
+  VERSION = version;
   NODES = nodes;
   EDGES = edges;
   ({ byId, neighbours } = indexGraph(nodes, edges));

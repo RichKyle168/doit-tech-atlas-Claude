@@ -10,6 +10,7 @@
  *   ADMIN_TOKEN    enables the editor API (/api/admin/*)
  *   PORT           default 5173 in development, 10000 in production
  *   SEED_ON_BOOT   "false" to skip syncing content/ into the database at start-up
+ *   AZURE_SPEECH_KEY + AZURE_SPEECH_REGION   natural read-aloud voice (see server/tts.js)
  */
 import express from 'express';
 import compression from 'compression';
@@ -21,6 +22,7 @@ import { openDatabase } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { syncContent } from './db/sync.js';
 import { createApi } from './app.js';
+import { createTts } from './tts.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,6 +46,7 @@ export async function start({
   adminToken = process.env.ADMIN_TOKEN || '',
   seed = process.env.SEED_ON_BOOT !== 'false',
   serveClient = true,
+  tts = createTts(),
   log = console,
 } = {}) {
   const content = contentPayload();
@@ -68,7 +71,7 @@ export async function start({
     next();
   });
 
-  app.use('/api', createApi({ db, engine: fallback ? 'embedded-fallback' : db.engine, readOnly: fallback, adminToken, content, log }));
+  app.use('/api', createApi({ db, engine: fallback ? 'embedded-fallback' : db.engine, readOnly: fallback, adminToken, content, tts, log }));
 
   if (serveClient && dev) {
     const { createServer } = await import('vite');
@@ -89,7 +92,7 @@ export async function start({
     const s = app.listen(port, '0.0.0.0', () => ok(s));
   });
   const address = server.address();
-  log.info(`[web] DOIT Tech Atlas on http://localhost:${address.port} · database: ${fallback ? 'embedded fallback (read-only)' : db.engine}`);
+  log.info(`[web] DOIT Tech Atlas on http://localhost:${address.port} · database: ${fallback ? 'embedded fallback (read-only)' : db.engine} · voice: ${tts.available ? tts.voice : 'browser'}`);
 
   const close = async () => {
     await new Promise((ok) => server.close(ok));

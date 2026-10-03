@@ -8,6 +8,8 @@
  *   GET  /api/nodes/:id           one node with its path, children, relations and source ids
  *   GET  /api/sources?ids=a,b     source excerpts (all of them without ?ids)
  *   GET  /api/search?q=數位        search names, tags and texts
+ *   GET  /api/tts                  whether a natural read-aloud voice is configured
+ *   GET  /api/tts/:id/:part        read-aloud audio (mp3) for one part of a node, e.g. /api/tts/digital-twin/summary
  *
  * Editors (Authorization: Bearer $ADMIN_TOKEN):
  *   GET    /api/admin/export      full backup, same shape as content/index.js
@@ -22,6 +24,7 @@
 import express from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { indexGraph, refIdsOf, validateContent } from '../shared/graph.js';
+import { partText, speakable, SPEAKABLE_PARTS } from '../shared/speech.js';
 import * as repo from './db/repo.js';
 import { syncContent } from './db/sync.js';
 
@@ -38,9 +41,10 @@ const sha = (s) => createHash('sha256').update(s).digest();
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const pick = (n) => n && { id: n.id, level: n.level, nameZh: n.nameZh, nameEn: n.nameEn, status: n.status };
 
-export function createApi({ db, engine, readOnly = false, adminToken = '', content, log = console }) {
+export function createApi({ db, engine, readOnly = false, adminToken = '', content, tts = null, log = console }) {
   const api = express.Router();
   let cache = null;
+  const synthesising = new Map(); // one synthesis per text at a time
 
   async function atlas() {
     if (!cache) {
@@ -111,6 +115,61 @@ export function createApi({ db, engine, readOnly = false, adminToken = '', conte
     if (q.length > 50) throw new HttpError(400, 'Search terms are limited to 50 characters.');
     const limit = Math.min(Number(req.query.limit) || 20, 50);
     return res.json(await repo.searchNodes(db, q, limit));
+  }));
+
+  // ───────────────────────── read-aloud
+  api.get('/tts', (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.json({ available: Boolean(tts?.available), voice: tts?.available ? tts.voice : null });
+  });
+
+  api.get('/tts/:id/:part', wrap(async (req, res) => {
+    if (!tts?.available) throw new HttpError(404, 'No natural voice is configured; the browser voice is used instead.');
+    const { byId } = await atlas();
+    const { id, part } = req.params;
+    if (!SPEAKABLE_PARTS.has(part)) throw new HttpError(404, `Nothing to read for "${part}".`);
+    const raw = partText(byId.get(id), part);
+    if (!raw) throw new HttpError(404, `Nothing to read for ${id}/${part}.`);
+    const text = speakable(raw);
+    const key = tts.cacheKey(text);
+
+    let audio;
+    const hit = (await db.query('SELECT audio FROM tts_cache WHERE key = $1', [key])).rows[0];
+    if (hit) audio = Buffer.from(hit.audio);
+    else {
+      if (!synthesising.has(key)) {
+        synthesising.set(key, (async () => {
+          const made = await tts.synthesize(text);
+          await db.query(
+            'INSERT INTO tts_cache (key, voice, text, audio) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING',
+            [key, tts.voice, text, made],
+          ).catch((err) => log.warn('[tts] could not cache audio:', err.message));
+          return made;
+        })().finally(() => synthesising.delete(key)));
+      }
+      try {
+        audio = await synthesising.get(key);
+      } catch (err) {
+        log.warn('[tts] synthesis failed:', err.message);
+        throw new HttpError(502, 'The voice service did not answer; try the browser voice.');
+      }
+    }
+
+    res.set({ 'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=86400' });
+    // Safari plays media only from servers that honour byte ranges
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.get('range') || '');
+    if (range) {
+      const size = audio.length;
+      let start = range[1] === '' ? size - Number(range[2]) : Number(range[1]);
+      let end = range[1] !== '' && range[2] !== '' ? Number(range[2]) : size - 1;
+      start = Math.max(0, start); end = Math.min(size - 1, end);
+      if (start > end) { res.status(416).set('Content-Range', `bytes */${size}`).end(); return; }
+      res.status(206).set({ 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) });
+      res.end(audio.subarray(start, end + 1));
+      return;
+    }
+    res.set('Content-Length', String(audio.length));
+    res.end(audio);
   }));
 
   // ───────────────────────── editors

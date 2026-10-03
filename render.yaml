@@ -24,6 +24,11 @@ services:
           property: connectionString
       - key: ADMIN_TOKEN
         generateValue: true
+      # Optional natural read-aloud voice (Azure Speech, free tier F0 = 0.5M characters / month).
+      # Add these two in the dashboard (Environment) — they are secrets, so they are not kept here:
+      #   AZURE_SPEECH_KEY     the Speech resource key
+      #   AZURE_SPEECH_REGION  e.g. eastasia
+      # Without them the site reads aloud with each visitor's own device voice.
 
 databases:
   - name: doit-tech-atlas-db

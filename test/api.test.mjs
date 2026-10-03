@@ -170,3 +170,58 @@ describe('fallback', () => {
     }
   });
 });
+
+describe('read-aloud', () => {
+  test('without a voice service the browser voice is used', async () => {
+    const { status, body } = await call('/tts');
+    assert.equal(status, 200);
+    assert.equal(body.available, false);
+    assert.equal((await call('/tts/digital-twin/summary')).status, 404);
+  });
+
+  test('with a voice service: synthesises once, caches, serves byte ranges', async () => {
+    const { createTts } = await import('../server/tts.js');
+    const asked = [];
+    const tts = createTts({ synthesize: async (text) => { asked.push(text); return Buffer.from(`MP3:${text}`); } });
+    const s = await start({ port: 0, serveClient: false, databaseUrl: '', adminToken: TOKEN, tts, log: quiet });
+    try {
+      const url = `http://localhost:${s.port}/api`;
+      assert.equal((await (await fetch(`${url}/tts`)).json()).available, true);
+
+      const first = await fetch(`${url}/tts/machine-vision/summary`);
+      assert.equal(first.status, 200);
+      assert.equal(first.headers.get('content-type'), 'audio/mpeg');
+      const body = Buffer.from(await first.arrayBuffer()).toString();
+      assert.match(body, /^MP3:機器人的眼睛/);
+      await fetch(`${url}/tts/machine-vision/summary`);
+      assert.equal(asked.length, 1, 'the second request is served from the cache');
+
+      const part = await fetch(`${url}/tts/machine-vision/summary`, { headers: { Range: 'bytes=0-3' } });
+      assert.equal(part.status, 206);
+      assert.equal(Buffer.from(await part.arrayBuffer()).toString(), 'MP3:');
+
+      // lists are read as one passage; symbols are spelled out
+      await fetch(`${url}/tts/edge-ai/applications`);
+      assert.match(asked.at(-1), /系統整合延遲小於等於100毫秒/);
+      await fetch(`${url}/tts/edge-ai/label-applications`);
+      assert.equal(asked.at(-1), '應用在哪裡');
+
+      assert.equal((await fetch(`${url}/tts/machine-vision/industryValue`)).status, 404, 'empty fields have nothing to read');
+      assert.equal((await fetch(`${url}/tts/machine-vision/excerpt`)).status, 404, 'only page parts can be read');
+      assert.equal((await fetch(`${url}/tts/nope/summary`)).status, 404);
+    } finally {
+      await s.close();
+    }
+  });
+
+  test('a failing voice service answers 502 so the browser can fall back', async () => {
+    const { createTts } = await import('../server/tts.js');
+    const tts = createTts({ synthesize: async () => { throw new Error('quota'); } });
+    const s = await start({ port: 0, serveClient: false, databaseUrl: '', tts, log: quiet });
+    try {
+      assert.equal((await fetch(`http://localhost:${s.port}/api/tts/hrc/description`)).status, 502);
+    } finally {
+      await s.close();
+    }
+  });
+});

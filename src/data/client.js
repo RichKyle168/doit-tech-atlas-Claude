@@ -42,3 +42,15 @@ export async function loadSources(ids) {
   }
   return ids.map((id) => sourceCache.get(id)).filter(Boolean);
 }
+
+/** Whether the server can read aloud with a natural voice. */
+export async function loadVoiceStatus() {
+  if (EMBEDDED) return { available: false };
+  try {
+    return await getJson('/api/tts');
+  } catch {
+    return { available: false };
+  }
+}
+
+export const EMBEDDED_MODE = EMBEDDED;
