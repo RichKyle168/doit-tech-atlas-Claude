@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getNode } from '../data/graph.js';
 import { useAtlas } from '../state/atlas.jsx';
@@ -9,6 +10,13 @@ export default function Overlay() {
   const { view, viewKey, actions } = useAtlas();
   const n = getNode(viewKey);
   const parent = n && n.primaryParent && n.primaryParent !== 'atlas' ? getNode(n.primaryParent) : null;
+  // the hint goes away once the visitor has turned the sky by hand
+  const [spun, setSpun] = useState(false);
+  useEffect(() => {
+    const on = () => setSpun(true);
+    window.addEventListener('atlas:spun', on, { once: true });
+    return () => window.removeEventListener('atlas:spun', on);
+  }, []);
   return (
     <div className="overlay">
       <AnimatePresence mode="wait">
@@ -23,6 +31,14 @@ export default function Overlay() {
               <span>星系</span><i />
               <span>星星</span>
             </p>
+            <AnimatePresence>
+              {!spun && (
+                <motion.p className="intro__hint" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 2.4, duration: 1 } }} exit={{ opacity: 0, transition: { duration: 0.4 } }}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M18 3v4h-4M6 21v-4h4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  拖曳或滑動，轉動星空
+                </motion.p>
+              )}
+            </AnimatePresence>
           </motion.div>
         ) : (
           <motion.header key={viewKey} className="level-head" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.9, duration: 0.6 } }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>

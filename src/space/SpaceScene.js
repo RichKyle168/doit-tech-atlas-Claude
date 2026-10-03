@@ -14,12 +14,18 @@ import { rng } from './points.js';
  *   galaxy   → 星系 orbit the galactic bulge (inside a faint galactic disc)
  *   system   → 星星 orbit the system's sun, one ring per constellation
  *
+ * Everything revolves on its own; dragging (mouse or touch), a wheel / trackpad swipe or the arrow keys
+ * spin the whole system, which keeps turning with a little inertia. Dragging up and down tilts the view.
+ *
  * The scene is data-agnostic: React hands it a `spec` and receives picks back.
  *   spec = { key, kind, elev, center: { id, label, sub, hue, pickable }, rings: [{ r, label?, bodies: [{ id, label, sub, hue, status, kind }] }] }
  */
 
 const FOV = 46;
-const SPEED = { atlas: 0.018, universe: 0.02, galaxy: 0.016, system: 0.024 }; // rad / s on the innermost ring
+const SPEED = { atlas: 0.05, universe: 0.06, galaxy: 0.08, system: 0.1 }; // rad / s on the innermost ring
+const FALLOFF = 0.5; // outer rings turn slower (ω ∝ r^-0.5), like a gentler Kepler
+const MAX_SPIN = 4; // rad / s
+const TILT = [-0.3, 0.32]; // how far a vertical drag may tilt the view (rad)
 const ease = {
   inCubic: (t) => t * t * t,
   outCubic: (t) => 1 - Math.pow(1 - t, 3),
@@ -82,18 +88,35 @@ export class SpaceScene {
     this.raycaster = new THREE.Raycaster();
     this.ndc = new THREE.Vector2(-9, -9);
     this.tmp = v3();
+    this.tmp2 = v3();
+
+    // spinning by hand
+    this.surface = container.parentElement || container; // canvas + labels
+    this.drag = null;
+    this.spinVel = 0;
+    this.tilt = 0;
+    this.dragEndAt = -1e9;
 
     this.onMove = (e) => {
+      if (this.drag?.moved) return;
       const r = this.container.getBoundingClientRect();
       this.pointer.x = (e.clientX - r.left) / r.width - 0.5;
       this.pointer.y = (e.clientY - r.top) / r.height - 0.5;
       this.ndc.set(this.pointer.x * 2, -this.pointer.y * 2);
     };
     this.onLeave = () => { this.ndc.set(-9, -9); };
-    this.onClick = () => { if (this.hoverId && !this.anim) this.onPick(this.hoverId); };
+    this.onClick = () => { if (this.hoverId && this.canPick()) this.onPick(this.hoverId); };
+    this.onDown = (e) => this.dragStart(e);
+    this.onDragMove = (e) => this.dragMove(e);
+    this.onDragEnd = (e) => this.dragEnd(e);
+    this.onWheel = (e) => this.wheel(e);
+    this.onKey = (e) => this.key(e);
     this.renderer.domElement.addEventListener('pointermove', this.onMove);
     this.renderer.domElement.addEventListener('pointerleave', this.onLeave);
     this.renderer.domElement.addEventListener('click', this.onClick);
+    this.surface.addEventListener('pointerdown', this.onDown);
+    this.surface.addEventListener('wheel', this.onWheel, { passive: false });
+    window.addEventListener('keydown', this.onKey);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(container);
@@ -154,7 +177,9 @@ export class SpaceScene {
     layer.className = 'lbl-layer';
     this.labelLayer.appendChild(layer);
     const r = rng(spec.key.length + 3);
-    const level = { spec, group, layer, bodies: [], ringLabels: [], spinners: [], hits: [], t: 0 };
+    const level = { spec, group, layer, bodies: [], ringLabels: [], spinners: [], hits: [], t: 0, spin: 0, backdrop: null };
+    this.spinVel = 0;
+    this.tilt = 0;
 
     // centre
     const c = spec.center;
@@ -165,6 +190,7 @@ export class SpaceScene {
       centreObj = makeSun({ size: 7, color: new THREE.Color('#ffe7c8'), flare: true, halo: 6 });
       const disc = makeGalaxyBackdrop({ hue: c.hue, radius: Math.max(...spec.rings.map((x) => x.r)) * 1.9, seed: 4 });
       group.add(disc);
+      level.backdrop = disc;
       level.spinners.push(disc.userData.spin);
       this.pointMats.push(disc.children[0].children[0].material);
     } else centreObj = makeSun({ size: 5.2, color: new THREE.Color('#fff0d8'), flare: true, halo: 6 });
@@ -179,8 +205,8 @@ export class SpaceScene {
       rg.rotation.set((r() - 0.5) * 0.1, 0, (r() - 0.5) * 0.08);
       rg.add(makeRing(ring.r, spec.kind === 'system' ? 0.2 : 0.14));
       group.add(rg);
-      // slow, nearly rigid rotation: bodies keep their spacing so labels stay readable
-      const speed = this.reduce ? 0 : SPEED[spec.kind] * Math.pow(spec.rings[0].r / ring.r, 0.3);
+      // every ring revolves on its own; inner rings a little faster than outer ones
+      const speed = this.reduce ? 0 : SPEED[spec.kind] * Math.pow(spec.rings[0].r / ring.r, FALLOFF);
       const n = ring.bodies.length;
       const offset = ri * 2.399; // golden angle keeps rings from lining up
       ring.bodies.forEach((b, bi) => {
@@ -222,7 +248,7 @@ export class SpaceScene {
     el.className = `lbl lbl--${kind}${item.status ? ` is-${item.status}` : ''}`;
     if (pickable) {
       el.type = 'button';
-      el.addEventListener('click', (e) => { e.stopPropagation(); if (!this.anim) this.onPick(item.id); });
+      el.addEventListener('click', (e) => { e.stopPropagation(); if (this.canPick()) this.onPick(item.id); });
       el.addEventListener('mouseenter', () => this.setHover(item.id));
       el.addEventListener('mouseleave', () => this.setHover(null));
       el.addEventListener('focus', () => this.setHover(item.id));
@@ -249,9 +275,94 @@ export class SpaceScene {
 
   placeBodies(level) {
     for (const b of level.bodies) {
-      const a = b.phase + b.speed * level.t;
+      const a = b.phase + b.speed * level.t + level.spin;
       b.obj.position.set(Math.cos(a) * b.r, 0, Math.sin(a) * b.r);
     }
+    if (level.backdrop) level.backdrop.rotation.y = -level.spin; // the galactic disc turns with the hand, too
+  }
+
+  // ───────────────────────────── spinning by hand
+
+  /** A click right after a drag is the end of the drag, not a pick. */
+  canPick() { return !this.anim && performance.now() - this.dragEndAt > 250; }
+
+  /** Screen radius of the outermost ring, so the body under the finger follows the finger. */
+  ringRadiusPx() {
+    const L = this.level;
+    if (!L || !this.w) return 300;
+    const R = Math.max(...L.spec.rings.map((r) => r.r));
+    const c = v3().project(this.camera);
+    const e = new THREE.Vector3(R, 0, 0).project(this.camera);
+    return Math.max(80, (Math.abs(e.x - c.x) * this.w) / 2);
+  }
+
+  dragStart(e) {
+    if (this.drag || this.anim || !this.level) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    this.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, vel: 0, radius: this.ringRadiusPx(), touch: e.pointerType !== 'mouse' };
+    window.addEventListener('pointermove', this.onDragMove);
+    window.addEventListener('pointerup', this.onDragEnd);
+    window.addEventListener('pointercancel', this.onDragEnd);
+  }
+
+  dragMove(e) {
+    const d = this.drag;
+    if (!d || e.pointerId !== d.id || !this.level) return;
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < (d.touch ? 10 : 5)) return;
+      d.moved = true;
+      this.spinVel = 0;
+      this.setHover(null);
+      this.ndc.set(-9, -9);
+      this.surface.classList.add('is-dragging');
+      window.dispatchEvent(new Event('atlas:spun'));
+    }
+    const now = performance.now();
+    const dx = e.clientX - d.x; const dy = e.clientY - d.y;
+    // dragging right carries the near side of the orbit to the right
+    const da = -dx / d.radius;
+    this.level.spin += da;
+    this.tilt = THREE.MathUtils.clamp(this.tilt + (dy / this.h) * 0.9, TILT[0], TILT[1]);
+    const ms = Math.max(1, now - d.t);
+    d.vel = d.vel * 0.6 + (da / (ms / 1000)) * 0.4;
+    d.x = e.clientX; d.y = e.clientY; d.t = now;
+  }
+
+  dragEnd(e) {
+    const d = this.drag;
+    if (!d || e.pointerId !== d.id) return;
+    window.removeEventListener('pointermove', this.onDragMove);
+    window.removeEventListener('pointerup', this.onDragEnd);
+    window.removeEventListener('pointercancel', this.onDragEnd);
+    this.drag = null;
+    if (!d.moved) return;
+    this.surface.classList.remove('is-dragging');
+    this.dragEndAt = performance.now();
+    // a flick keeps the system turning; a drag that stopped before letting go does not
+    const still = performance.now() - d.t > 90;
+    this.spinVel = this.reduce || still ? 0 : THREE.MathUtils.clamp(d.vel, -MAX_SPIN, MAX_SPIN);
+  }
+
+  wheel(e) {
+    if (!this.level || this.anim) return;
+    e.preventDefault();
+    if (e.ctrlKey) return; // pinch gestures: ignore rather than zoom the page
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.h : 1;
+    const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    const delta = (horizontal ? e.deltaX : e.deltaY) * unit;
+    if (this.reduce) { this.level.spin += delta * 0.002; return; }
+    this.spinVel = THREE.MathUtils.clamp(this.spinVel + delta * 0.0022, -MAX_SPIN, MAX_SPIN);
+  }
+
+  key(e) {
+    if (!this.level || this.anim || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+    if (document.activeElement?.closest?.('.panel, .src-panel')) return;
+    const dir = e.key === 'ArrowLeft' ? -1 : 1;
+    if (this.reduce) { this.level.spin += dir * 0.25; return; }
+    this.spinVel = THREE.MathUtils.clamp(this.spinVel + dir * 0.9, -MAX_SPIN, MAX_SPIN);
   }
 
   bodyWorld(level, id) {
@@ -314,6 +425,8 @@ export class SpaceScene {
       const to = p.clone().add(this.camera.position.clone().sub(p).normalize().multiplyScalar(this.bodySize(old, via) * 0.6));
       const keep = old.bodies.find((b) => b.id === via)?.obj;
       this.frozen = true;
+      this.timeScale = 0;
+      this.spinVel = 0;
       this.animate({ dur: 1.15, ease: ease.inCubic, fromPos: this.camera.position.clone(), toPos: to, fromLook: this.look.clone(), toLook: p, fade: [1, 0], target: old, keep, then: () => { this.flash = 1; this.frozen = false; out(); } });
     } else {
       const to = this.camera.position.clone().multiplyScalar(mode === 'out' ? 2.4 : 2.0);
@@ -364,6 +477,13 @@ export class SpaceScene {
     const want = this.frozen ? 0 : this.hoverId ? 0.08 : this.selection.id ? 0.3 : 1;
     this.timeScale += (want - this.timeScale) * Math.min(1, dt * 4);
     L.t += dt * this.timeScale;
+    // inertia after a flick or a wheel turn
+    if (!this.drag && !this.frozen && Math.abs(this.spinVel) > 1e-4) {
+      L.spin += this.spinVel * dt;
+      this.spinVel *= Math.exp(-dt * 1.6);
+    }
+    // a tilt eases back to the level's own angle once the hand lets go
+    if (!this.drag?.moved) this.tilt += (0 - this.tilt) * Math.min(1, dt * 0.7);
     this.placeBodies(L);
     for (const s of L.spinners) s(dt * (this.reduce ? 0 : 1));
     if (!this.reduce) { this.far.rotation.y += dt * 0.0015; this.dust.rotation.y += dt * 0.006; this.mid.rotation.y += dt * 0.003; }
@@ -384,7 +504,9 @@ export class SpaceScene {
         else this.finishAnim();
       }
     } else {
-      const { pos, look } = L.rest;
+      const { look } = L.rest;
+      const elev = THREE.MathUtils.clamp(L.rest.elev + this.tilt, 0.1, 1.38);
+      const pos = this.tmp2.set(0, L.rest.dist * Math.sin(elev), L.rest.dist * Math.cos(elev));
       this.ps.x += (this.pointer.x - this.ps.x) * Math.min(1, dt * 1.2);
       this.ps.y += (this.pointer.y - this.ps.y) * Math.min(1, dt * 1.2);
       const drift = this.reduce ? 0 : 1;
@@ -393,7 +515,7 @@ export class SpaceScene {
         (-this.ps.y * 0.04 + Math.sin(t * 0.05) * 0.008) * L.rest.dist * drift,
         0,
       ));
-      this.camera.position.lerp(target, Math.min(1, dt * 2));
+      this.camera.position.lerp(target, Math.min(1, dt * (this.drag?.moved ? 6 : 2)));
       this.look.lerp(look, Math.min(1, dt * 2));
     }
     this.camera.lookAt(this.look);
@@ -407,7 +529,7 @@ export class SpaceScene {
     for (const m of this.pointMats) { m.uniforms.uTime.value = t; m.uniforms.uScale.value = this.uScale; }
 
     // pointer picking
-    if (!this.anim && this.ndc.x > -2) {
+    if (!this.anim && !this.drag?.moved && this.ndc.x > -2) {
       this.raycaster.setFromCamera(this.ndc, this.camera);
       const hit = this.raycaster.intersectObjects(L.hits, false)[0];
       const id = hit?.object.userData.id || null;
@@ -489,6 +611,8 @@ export class SpaceScene {
         if (!hit) break;
         y = y >= hit.y ? hit.y + (hit.el._h + it.el._h) / 2 + 2 : hit.y - (hit.el._h + it.el._h) / 2 - 2;
       }
+      // keep labels of on-screen bodies inside the screen (narrow phones)
+      if (it.x > 0 && it.x < this.w) it.x = THREE.MathUtils.clamp(it.x, it.el._w / 2 + 6, this.w - it.el._w / 2 - 6);
       it.el._y = it.el._y == null || Math.abs(it.el._y - y) > 80 ? y : it.el._y + (y - it.el._y) * 0.2;
       placed.push({ ...it, y: it.el._y });
       it.el.style.transform = `translate3d(${it.x.toFixed(1)}px, ${(it.el._y - it.el._h / 2).toFixed(1)}px, 0) translateX(-50%)`;
@@ -506,6 +630,12 @@ export class SpaceScene {
   destroy() {
     this.renderer.setAnimationLoop(null);
     this.ro.disconnect();
+    this.surface.removeEventListener('pointerdown', this.onDown);
+    this.surface.removeEventListener('wheel', this.onWheel);
+    window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('pointermove', this.onDragMove);
+    window.removeEventListener('pointerup', this.onDragEnd);
+    window.removeEventListener('pointercancel', this.onDragEnd);
     if (this.level) this.dispose(this.level);
     this.renderer.dispose();
     this.renderer.domElement.remove();

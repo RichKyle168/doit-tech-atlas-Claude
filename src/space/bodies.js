@@ -129,7 +129,7 @@ export function makeSpiral({ hue, radius = 8, arms = 2, seed = 1, bright = 1, co
   const core = sprite(glowTexture(), { color: WARM, opacity: 0.95 * bright, scale: [radius * 0.45, radius * 0.45] });
   g.add(core);
   g.userData.glow = core;
-  g.userData.spin = (dt) => { pts.rotation.y += dt * 0.06; };
+  g.userData.spin = (dt) => { pts.rotation.y += dt * 0.12; };
   return g;
 }
 
