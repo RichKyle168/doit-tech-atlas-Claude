@@ -2,14 +2,15 @@
  * Natural read-aloud voice.
  *
  * With AZURE_SPEECH_KEY and AZURE_SPEECH_REGION set, star pages are read by Azure's neural
- * zh-TW-YunJheNeural (a warm Taiwanese male voice), slightly slower and lower than default.
+ * zh-TW-YunJheNeural (a warm Taiwanese male voice) at its normal speed; the visitor's speed
+ * setting is applied in the browser.
  * Each text is synthesised once and kept in the database (tts_cache), so a page costs
  * characters only the first time anybody listens to it.
  * Without a key the browser reads with the device's own voice instead.
  *
  *   TTS_VOICE  default zh-TW-YunJheNeural
- *   TTS_RATE   default -8%   (slower)
- *   TTS_PITCH  default -2%   (a touch deeper)
+ *   TTS_RATE   default 0%
+ *   TTS_PITCH  default 0%
  */
 import { createHash } from 'node:crypto';
 
@@ -19,8 +20,8 @@ export function createTts({
   key = process.env.AZURE_SPEECH_KEY,
   region = process.env.AZURE_SPEECH_REGION,
   voice = process.env.TTS_VOICE || 'zh-TW-YunJheNeural',
-  rate = process.env.TTS_RATE || '-8%',
-  pitch = process.env.TTS_PITCH || '-2%',
+  rate = process.env.TTS_RATE || '0%',
+  pitch = process.env.TTS_PITCH || '0%',
   synthesize = null, // inject for tests
   fetchImpl = globalThis.fetch,
 } = {}) {

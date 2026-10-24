@@ -55,8 +55,8 @@ Vercel 免費方案（Hobby）限個人、非商業用途；正式對外的商�
 ## 語音朗讀與大字
 
 * 技術星星的說明面板，每個欄位都有「朗讀」按鈕，最上方另有「朗讀全文」。正在朗讀的段落會在左側亮起，換頁或關閉面板就停止。
-* **自然人聲（建議）**：在 Render 的 Environment 加上 `AZURE_SPEECH_KEY` 與 `AZURE_SPEECH_REGION`，伺服器會用 Azure 神經語音 `zh-TW-YunJheNeural`（溫暖的臺灣男聲），語速放慢 8%、音調略低。每段文字只合成一次，之後從資料庫的 `tts_cache` 直接播放。Azure Speech 免費方案（F0）每月 50 萬字元，整個星圖目前不到 1 萬字元。
-  * 可調整：`TTS_VOICE`（例如 `zh-TW-HsiaoChenNeural` 女聲）、`TTS_RATE`（預設 `-8%`）、`TTS_PITCH`（預設 `-2%`）。
+* **自然人聲（建議）**：在 Vercel（或 Render）的環境變數加上 `AZURE_SPEECH_KEY` 與 `AZURE_SPEECH_REGION`，伺服器會用 Azure 神經語音 `zh-TW-YunJheNeural`（溫暖的臺灣男聲），每台手機聽到的都是同一個聲音；語速依訪客在「換聲音、調語速」的設定（預設 1.2 倍）。每段文字只合成一次，之後從資料庫的 `tts_cache` 直接播放。Azure Speech 免費方案（F0）每月 50 萬字元，整個星圖目前不到 1 萬字元。
+  * 可調整：`TTS_VOICE`（例如 `zh-TW-HsiaoChenNeural` 女聲）、`TTS_RATE`（預設 `0%`）、`TTS_PITCH`（預設 `0%`）。
 * **沒有設定時**：改用訪客裝置內建的國語語音。優先選自然／神經語音（Edge 的「Online (Natural)」、Apple 的增強版、Google 的線上語音）與臺灣國語，舊式的電腦語音（Hanhan、Yating、Zhiwei，聽起來比較生硬）排在最後；音調維持語音本身，語速預設 1.2 倍。音色取決於裝置（iPhone、Android、Windows 各不相同）。
 * 技術星星頁的「換聲音、調語速」可以自己挑聲音（點一下就試聽）和語速（慢一點 1 倍／正常 1.2 倍／快一點 1.4 倍／更快 1.6 倍），選擇會記在這台裝置上。
 * 文字會先整理成適合朗讀的形式：≥ 讀作「大於等於」、2024~2027 讀作「2024到2027」、ms 讀作「毫秒」等。

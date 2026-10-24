@@ -34,7 +34,10 @@ export const SAMPLE = '您好，我是 Dr. T。這是朗讀的聲音和速度，
 const NATURAL = /natural|neural|premium|enhanced|增強|優化|高音質|siri/i;
 const NETWORK = /google/i;
 const LEGACY = /hanhan|yating|zhiwei|huihui|kangkang|yaoyao|espeak|desktop/i;
-const WARM = /yunjhe|yunxi|yunyang|yunjian|男|male/i;
+// voice names that tell the gender (the Web Speech API itself does not say)
+const MALE = /yunjhe|yunxi|yunyang|yunjian|yunhao|yunfeng|yunze|yunxia|zhiwei|kangkang|li-?mu|李牧|男|\bmale\b/i;
+const FEMALE = /hsiaochen|hsiaoyu|xiaoxiao|xiaoyi|xiaohan|xiaomeng|xiaomo|xiaoqiu|xiaorui|xiaoshuang|xiaoxuan|xiaoyan|xiaoyou|xiaozhen|hanhan|yating|huihui|yaoyao|mei-?jia|美佳|ting-?ting|婷婷|sinji|yu-?shu|shanshan|女|female|google/i;
+const genderOf = (v) => (MALE.test(v.name) ? 'male' : FEMALE.test(v.name) ? 'female' : null);
 
 const isMandarin = (v) => {
   const lang = v.lang.replace('_', '-').toLowerCase();
@@ -47,7 +50,7 @@ function score(v) {
   if (NATURAL.test(v.name)) s += 45;
   else if (NETWORK.test(v.name)) s += 30;
   if (LEGACY.test(v.name)) s -= 40;
-  if (NATURAL.test(v.name) && WARM.test(v.name)) s += 4;
+  if (genderOf(v) === 'male') s += 35; // a male voice is preferred
   if (!v.localService) s += 2;
   return s;
 }
@@ -71,11 +74,12 @@ let serverVoice = false;
 /** Voices to choose from, best first: the site's own voice (when set up), then the device's. */
 export function voices() {
   const list = [];
-  if (serverVoice) list.push({ id: SERVER_VOICE, label: '網站的自然人聲', note: '臺灣國語，溫暖的男聲', score: 1000 });
+  if (serverVoice) list.push({ id: SERVER_VOICE, label: '網站的自然人聲', note: '臺灣國語，男聲，自然語音', score: 1000, gender: 'male' });
   if (synth) {
     list.push(...synth.getVoices()
       .filter(isMandarin)
-      .map((v) => ({ id: v.voiceURI || v.name, label: label(v), note: `${isTaiwan(v) ? '臺灣國語' : '普通話'}，${quality(v)}`, score: score(v), voice: v }))
+      .map((v) => ({ id: v.voiceURI || v.name, label: label(v), note: [isTaiwan(v) ? '臺灣國語' : '普通話', { male: '男聲', female: '女聲' }[genderOf(v)], quality(v)].filter(Boolean).join('，'), score: score(v),
+      gender: genderOf(v), voice: v }))
       .sort((a, b) => b.score - a.score));
   }
   return list;

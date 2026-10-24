@@ -198,6 +198,7 @@ button.lbl--centre { pointer-events: auto; }
 .voice__name { display: flex; align-items: center; gap: 8px; font-size: 16.5px; font-weight: 500; }
 .voice__name em { font-style: normal; font-size: 12.5px; padding: 0 8px; border-radius: 999px; background: var(--star); color: #1b150b; }
 .voice__note { font-size: 14.5px; color: var(--ink-2); }
+.voice__hint { margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: var(--star-soft); border-left: 3px solid var(--star); font-size: 15px; color: var(--ink); }
 .voice__foot { margin-top: 18px; display: grid; gap: 10px; justify-items: start; }
 .voice__foot p { font-size: 14px; color: var(--ink-3); line-height: 1.7; }
 .speak { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 15px 0 11px; border-radius: 999px; border: 1px solid rgba(243, 230, 204, 0.4);
