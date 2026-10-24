@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { NODES, constellationsOf, getNode, linksOf, refsOf, starsOf } from '../data/graph.js';
 import { originFrom, useAtlas } from '../state/atlas.jsx';
 import { SourceListButton, Text } from './Source.jsx';
 import { STAR_PARTS } from '../../shared/speech.js';
 import { SpeakButton, fieldSegments, pageSegments, readingPart, useSpeech } from './Speech.jsx';
+import VoiceDialog from './VoiceDialog.jsx';
 
 // the star page's fields, in reading order (the summary is shown as the lead)
 const FIELDS = STAR_PARTS.filter(([, label]) => label);
@@ -176,12 +177,15 @@ const KICKER = {
 
 export default function ReadingPanel() {
   const { panelNode: n, actions } = useAtlas();
-  const { stop, playing } = useSpeech();
+  const { stop, playing, mode } = useSpeech();
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const scroller = useRef(null);
   useEffect(() => { scroller.current?.scrollTo({ top: 0 }); }, [n?.id]);
   useEffect(() => () => stop(), [n?.id, stop]); // a reading ends when the page it belongs to closes
 
   return (
+    <>
+    <AnimatePresence>{voiceOpen && <VoiceDialog key="voice" onClose={() => setVoiceOpen(false)} />}</AnimatePresence>
     <AnimatePresence>
       {n && (
         <motion.aside
@@ -205,6 +209,7 @@ export default function ReadingPanel() {
               {n.level === 'L4' && (
                 <div className="rp-tools">
                   <SpeakButton id={`all:${n.id}`} segments={pageSegments(n)} label="朗讀全文" title={n.nameZh} wide />
+                  {mode && <button type="button" className="link" onClick={() => setVoiceOpen(true)}>換聲音、調語速</button>}
                 </div>
               )}
               {n.level === 'L4' && <StarBody n={n} />}
@@ -219,5 +224,6 @@ export default function ReadingPanel() {
         </motion.aside>
       )}
     </AnimatePresence>
+    </>
   );
 }

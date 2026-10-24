@@ -184,7 +184,22 @@ button.lbl--centre { pointer-events: auto; }
 .panel__foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; justify-items: start; }
 
 /* read-aloud */
-.rp-tools { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.rp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; }
+
+/* voice picker */
+.voice__group { border: 0; margin: 16px 0 0; padding: 0; min-width: 0; }
+.voice__group legend { padding: 0; margin-bottom: 8px; font-size: 17px; font-weight: 500; color: var(--ink); }
+.voice__rates { display: flex; flex-wrap: wrap; gap: 8px; }
+.voice__rate { min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 16.5px; color: var(--ink); }
+.voice__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.voice__item { display: grid; gap: 2px; width: 100%; padding: 11px 14px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line-2); color: var(--ink); }
+.voice__rate:hover, .voice__item:hover { border-color: var(--star); }
+.voice__rate.is-on, .voice__item.is-on { border-color: var(--star); background: var(--star-soft); box-shadow: inset 0 0 0 1px var(--star); }
+.voice__name { display: flex; align-items: center; gap: 8px; font-size: 16.5px; font-weight: 500; }
+.voice__name em { font-style: normal; font-size: 12.5px; padding: 0 8px; border-radius: 999px; background: var(--star); color: #1b150b; }
+.voice__note { font-size: 14.5px; color: var(--ink-2); }
+.voice__foot { margin-top: 18px; display: grid; gap: 10px; justify-items: start; }
+.voice__foot p { font-size: 14px; color: var(--ink-3); line-height: 1.7; }
 .speak { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 15px 0 11px; border-radius: 999px; border: 1px solid rgba(243, 230, 204, 0.4);
   background: rgba(243, 230, 204, 0.06); color: var(--star); font-size: 15px; letter-spacing: 0.08em; transition: background 0.2s, border-color 0.2s, color 0.2s; }
 .speak:hover { background: var(--star-soft); border-color: var(--star); }

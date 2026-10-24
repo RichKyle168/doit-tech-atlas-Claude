@@ -2,12 +2,15 @@
  * Read-aloud engine.
  *
  *   server  — the site has a natural neural voice (/api/tts): play its mp3 for each part
- *   browser — otherwise the device's own Mandarin voice (Web Speech API), chosen for warmth:
- *             Taiwanese Mandarin first, natural/neural voices first, a deeper voice first,
- *             read a little slower and lower than default, one sentence at a time
+ *   browser — the device's own Mandarin voice (Web Speech API)
  *   null    — nothing that can speak Mandarin: read-aloud buttons are not shown
  *
- * One thing speaks at a time; starting a new reading stops the previous one.
+ * Which device voice: the most natural-sounding one. Neural and "enhanced/premium" voices
+ * first (Edge's "… Online (Natural)", Apple's enhanced voices, Google's network voices),
+ * Taiwanese Mandarin before other Mandarin, and the old desktop voices (Hanhan, Yating,
+ * Zhiwei…) last, because those are the ones that sound mechanical. Voices read at their own
+ * speed and pitch unless the visitor picks another speed. The visitor can choose the voice and
+ * the speed; the choice is remembered on that device. One thing speaks at a time.
  */
 import { sentences } from '../../shared/speech.js';
 import { loadVoiceStatus } from '../data/client.js';
@@ -16,13 +19,78 @@ import { VERSION } from '../data/graph.js';
 const synth = typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null;
 const audio = typeof Audio !== 'undefined' ? new Audio() : null;
 if (audio) audio.preload = 'auto';
+const STORE = 'tech-atlas.voice';
+export const SERVER_VOICE = 'server';
 
-const NATURAL = /natural|neural|online|premium|enhanced|增強|優化|高音質/i;
-const DEEP = /yunjhe|zhiwei|yunxi|yunyang|yunjian|li-?mu|\bhan\b|male|男/i;
+export const RATES = [
+  { id: 'slow', label: '慢一點', value: 0.85 },
+  { id: 'normal', label: '正常', value: 1 },
+  { id: 'fast', label: '快一點', value: 1.15 },
+];
+export const SAMPLE = '您好，我是 Dr. T。這是朗讀的聲音和速度，聽起來舒服嗎？';
 
+const NATURAL = /natural|neural|premium|enhanced|增強|優化|高音質|siri/i;
+const NETWORK = /google/i;
+const LEGACY = /hanhan|yating|zhiwei|huihui|kangkang|yaoyao|espeak|desktop/i;
+const WARM = /yunjhe|yunxi|yunyang|yunjian|男|male/i;
+
+const isMandarin = (v) => {
+  const lang = v.lang.replace('_', '-').toLowerCase();
+  return (lang.startsWith('zh') || lang.startsWith('cmn')) && !/hk|yue|mo/.test(lang); // Cantonese reads the wrong language
+};
+const isTaiwan = (v) => /tw|hant/i.test(v.lang) || /臺灣|台灣|taiwan/i.test(v.name);
+
+function score(v) {
+  let s = isTaiwan(v) ? 40 : 15;
+  if (NATURAL.test(v.name)) s += 45;
+  else if (NETWORK.test(v.name)) s += 30;
+  if (LEGACY.test(v.name)) s -= 40;
+  if (NATURAL.test(v.name) && WARM.test(v.name)) s += 4;
+  if (!v.localService) s += 2;
+  return s;
+}
+
+const label = (v) => v.name
+  .replace(/^Microsoft\s+/i, '')
+  .replace(/\s+-\s+.*$/, '')
+  .replace(/\s*Online\s*\(Natural\)/i, '')
+  .replace(/\s*\((Enhanced|Premium)\)/i, '')
+  .trim();
+
+function quality(v) {
+  if (NATURAL.test(v.name)) return '自然語音';
+  if (NETWORK.test(v.name)) return '線上語音';
+  if (LEGACY.test(v.name)) return '舊式語音，較生硬';
+  return '裝置內建';
+}
+
+let serverVoice = false;
+
+/** Voices to choose from, best first: the site's own voice (when set up), then the device's. */
+export function voices() {
+  const list = [];
+  if (serverVoice) list.push({ id: SERVER_VOICE, label: '網站的自然人聲', note: '臺灣國語，溫暖的男聲', score: 1000 });
+  if (synth) {
+    list.push(...synth.getVoices()
+      .filter(isMandarin)
+      .map((v) => ({ id: v.voiceURI || v.name, label: label(v), note: `${isTaiwan(v) ? '臺灣國語' : '普通話'}，${quality(v)}`, score: score(v), voice: v }))
+      .sort((a, b) => b.score - a.score));
+  }
+  return list;
+}
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE) || '{}');
+    return { voice: typeof s.voice === 'string' ? s.voice : null, rate: RATES.some((r) => r.id === s.rate) ? s.rate : 'normal' };
+  } catch {
+    return { voice: null, rate: 'normal' };
+  }
+}
+
+let settings = load();
 let mode = null;
 let voice = null;
-let serverVoice = false;
 const listeners = new Set();
 const notify = () => listeners.forEach((fn) => fn(mode));
 
@@ -32,28 +100,27 @@ export function onModeChange(fn) {
   return () => listeners.delete(fn);
 }
 
-function bestBrowserVoice() {
-  if (!synth) return null;
-  const scored = synth.getVoices()
-    .map((v) => {
-      const lang = v.lang.replace('_', '-').toLowerCase();
-      if (!(lang.startsWith('zh') || lang.startsWith('cmn')) || /hk|yue|mo/.test(lang)) return null; // Cantonese voices read the wrong language
-      let score = lang.includes('tw') || lang.includes('hant') ? 50 : 20;
-      if (NATURAL.test(v.name)) score += 25;
-      if (DEEP.test(v.name)) score += 15;
-      if (!v.localService) score += 3;
-      return { v, score };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score);
-  return scored[0]?.v || null;
-}
-
 function pickMode() {
-  voice = bestBrowserVoice();
-  mode = serverVoice ? 'server' : voice ? 'browser' : null;
+  const list = voices();
+  const chosen = list.find((x) => x.id === settings.voice) || list[0] || null;
+  mode = !chosen ? null : chosen.id === SERVER_VOICE ? 'server' : 'browser';
+  voice = chosen?.voice || list.find((x) => x.voice)?.voice || null; // also the fallback when the server voice fails
   notify();
 }
+
+export const getSettings = () => {
+  const list = voices();
+  const chosen = list.find((x) => x.id === settings.voice) || list[0];
+  return { ...settings, voice: chosen?.id || null };
+};
+
+export function setSettings(patch) {
+  settings = { ...settings, ...patch };
+  try { localStorage.setItem(STORE, JSON.stringify(settings)); } catch { /* private mode: keep it for this visit */ }
+  pickMode();
+}
+
+const rateValue = () => RATES.find((r) => r.id === settings.rate)?.value || 1;
 
 let ready = null;
 export function initSpeech() {
@@ -91,13 +158,13 @@ export function speak(segments, cb = {}) {
   stopSpeech();
   const mine = session;
   const live = () => mine === session;
+  const rate = rateValue();
   let i = 0;
 
   const browser = (seg, done) => {
     if (!synth) { done(); return; }
     const parts = sentences(seg.text);
     let k = 0;
-    const deep = DEEP.test(voice?.name || '');
     const say = () => {
       if (!live()) return;
       if (k >= parts.length) { done(); return; }
@@ -105,8 +172,8 @@ export function speak(segments, cb = {}) {
       k += 1;
       if (voice) u.voice = voice;
       u.lang = voice?.lang || 'zh-TW';
-      u.rate = 0.88;             // unhurried
-      u.pitch = deep ? 1 : 0.9;  // a touch lower when the voice itself is light
+      u.rate = rate;
+      u.pitch = 1; // shifting pitch is what makes many voices sound synthetic
       u.onstart = () => live() && cb.onPlaying?.();
       u.onend = say;
       u.onerror = (e) => {
@@ -119,10 +186,13 @@ export function speak(segments, cb = {}) {
   };
 
   const server = (seg, done) => {
+    // the sample sentence is not a stored part: the server only reads the atlas' own text
+    if (!seg.nodeId) { browser(seg, done); return; }
     audio.onended = () => live() && done();
     audio.onerror = () => live() && browser(seg, done); // voice service unavailable: fall back to the device voice
     audio.onplaying = () => live() && cb.onPlaying?.();
     audio.src = `/api/tts/${encodeURIComponent(seg.nodeId)}/${encodeURIComponent(seg.part)}?v=${VERSION}`;
+    audio.playbackRate = rate;
     const p = audio.play();
     if (p?.catch) {
       p.catch((err) => {
