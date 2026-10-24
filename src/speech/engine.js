@@ -9,7 +9,7 @@
  * first (Edge's "… Online (Natural)", Apple's enhanced voices, Google's network voices),
  * Taiwanese Mandarin before other Mandarin, and the old desktop voices (Hanhan, Yating,
  * Zhiwei…) last, because those are the ones that sound mechanical. Voices keep their own pitch and
- * read at a brisk 1.2× by default. The visitor can choose the voice and
+ * read at a brisk 1.1× by default. The visitor can choose the voice and
  * the speed; the choice is remembered on that device. One thing speaks at a time.
  */
 import { sentences } from '../../shared/speech.js';
@@ -24,10 +24,10 @@ export const SERVER_VOICE = 'server';
 
 // 「正常」 is a little brisker than a voice's default (1.0 reads slowly for most Mandarin voices)
 export const RATES = [
-  { id: 'slow', label: '慢一點', value: 1 },
-  { id: 'normal', label: '正常', value: 1.2 },
-  { id: 'fast', label: '快一點', value: 1.4 },
-  { id: 'faster', label: '更快', value: 1.6 },
+  { id: 'slow', label: '慢一點', value: 0.9 },
+  { id: 'normal', label: '正常', value: 1.1 },
+  { id: 'fast', label: '快一點', value: 1.3 },
+  { id: 'faster', label: '更快', value: 1.5 },
 ];
 export const SAMPLE = '您好，我是 Dr. T。這是朗讀的聲音和速度，聽起來舒服嗎？';
 
@@ -126,7 +126,7 @@ export function setSettings(patch) {
   pickMode();
 }
 
-const rateValue = () => RATES.find((r) => r.id === settings.rate)?.value || 1.2;
+const rateValue = () => RATES.find((r) => r.id === settings.rate)?.value || 1.1;
 
 let ready = null;
 export function initSpeech() {
