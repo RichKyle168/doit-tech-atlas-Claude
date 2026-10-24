@@ -189,8 +189,8 @@ button.lbl--centre { pointer-events: auto; }
 /* voice picker */
 .voice__group { border: 0; margin: 16px 0 0; padding: 0; min-width: 0; }
 .voice__group legend { padding: 0; margin-bottom: 8px; font-size: 17px; font-weight: 500; color: var(--ink); }
-.voice__rates { display: flex; flex-wrap: wrap; gap: 8px; }
-.voice__rate { min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 16.5px; color: var(--ink); }
+.voice__rates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.voice__rate { min-height: 46px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 16.5px; color: var(--ink); }
 .voice__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .voice__item { display: grid; gap: 2px; width: 100%; padding: 11px 14px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line-2); color: var(--ink); }
 .voice__rate:hover, .voice__item:hover { border-color: var(--star); }
