@@ -43,8 +43,8 @@ export default function VoiceDialog({ onClose }) {
           <h3 className="src-panel__title">朗讀的聲音</h3>
           <button ref={closeRef} type="button" className="icon-btn" onClick={onClose} aria-label="關閉">✕</button>
         </header>
-        {!list.some((v) => v.gender === 'male') && (
-          <p className="voice__hint">這台裝置沒有內建的國語男聲，所以先用女聲朗讀。</p>
+        {!list.some((v) => v.gender === 'male' && !v.note.includes('舊式')) && (
+          <p className="voice__hint">這台裝置沒有自然的國語男聲，所以先用女聲朗讀。</p>
         )}
         <fieldset className="voice__group">
           <legend>語速</legend>
